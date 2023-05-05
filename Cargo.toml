@@ -1,0 +1,30 @@
+[package]
+name = "halo2-lib-eddsa"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+group = "0.12"
+itertools = "0.10"
+num-bigint = "0.4.3"
+rand = "0.8"
+
+halo2-base = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "release-0.3.0" }
+halo2-ecc = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "release-0.3.0" }
+
+[dev-dependencies]
+ark-std = { version = "0.3.0", features = ["print-trace"] }
+num-traits = "0.2"
+rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.9"
+
+[patch.'https://github.com/axiom-crypto/halo2.git']
+halo2_proofs_axiom = { git = "https://github.com/shuklaayush/halo2.git", branch = "feat/ed25519", package = "halo2_proofs" }
+
+[profile.dev]
+opt-level = 3
+debug = 1 # change to 0 or 2 for more or less debug info
+overflow-checks = true
+incremental = true
