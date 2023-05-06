@@ -93,3 +93,27 @@ fn test_ecc() {
         .unwrap()
         .assert_satisfied();
 }
+
+#[cfg(feature = "dev-graph")]
+#[test]
+fn plot_ecc() {
+    let k = 23;
+    use plotters::prelude::*;
+
+    let root = BitMapBackend::new("layout.png", (512, 16384)).into_drawing_area();
+    root.fill(&WHITE).unwrap();
+    let root = root.titled("Ecc Layout", ("sans-serif", 60)).unwrap();
+
+    let P = Ed25519Affine::random(OsRng);
+    let Q = Ed25519Affine::random(OsRng);
+
+    let mut builder = GateThreadBuilder::<Fr>::keygen();
+    basic_tests(builder.main(0), k - 1, 88, 3, P, Q);
+
+    builder.config(k, Some(20));
+    let circuit = RangeCircuitBuilder::mock(builder);
+
+    halo2_base::halo2_proofs::dev::CircuitLayout::default()
+        .render(k as u32, &circuit, &root)
+        .unwrap();
+}

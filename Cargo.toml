@@ -9,6 +9,8 @@ itertools = "0.10"
 num-bigint = "0.4.3"
 rand = "0.8"
 
+plotters = { version = "0.3.0", optional = true }
+
 halo2-base = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "release-0.3.0" }
 halo2-ecc = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "release-0.3.0" }
 
@@ -19,6 +21,10 @@ rand_core = { version = "0.6", default-features = false, features = ["getrandom"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.9"
+
+[features]
+default = ["dev-graph"]
+dev-graph = ["halo2-base/dev-graph", "plotters"]
 
 [patch.'https://github.com/axiom-crypto/halo2.git']
 halo2_proofs_axiom = { git = "https://github.com/shuklaayush/halo2.git", branch = "feat/ed25519", package = "halo2_proofs" }
