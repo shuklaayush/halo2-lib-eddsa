@@ -6,8 +6,8 @@ use halo2_base::gates::builder::{
 use halo2_base::gates::RangeChip;
 use halo2_base::halo2_proofs::{
     dev::MockProver,
-    halo2curves::bn256::{Bn256, Fr as Fs, G1Affine},
-    halo2curves::ed25519::{Ed25519Affine, Fq, Fr},
+    halo2curves::bn256::{Bn256, Fr, G1Affine},
+    halo2curves::ed25519::{Ed25519Affine, Fq as Fp, Fr as Fq},
     plonk::*,
     poly::commitment::ParamsProver,
     transcript::{Blake2bRead, Blake2bWrite, Challenge255},
@@ -51,8 +51,8 @@ fn eddsa_test<F: PrimeField>(
     ctx: &mut Context<F>,
     params: CircuitParams,
     R: Ed25519Affine,
-    s: Fr,
-    msghash: Fr,
+    s: Fq,
+    msghash: Fq,
     pk: Ed25519Affine,
 ) {
     std::env::set_var("LOOKUP_BITS", params.lookup_bits.to_string());
@@ -60,14 +60,14 @@ fn eddsa_test<F: PrimeField>(
     let fp_chip = FpChip::<F>::new(&range, params.limb_bits, params.num_limbs);
     let fq_chip = FqChip::<F>::new(&range, params.limb_bits, params.num_limbs);
 
-    let [m, s] = [msghash, s].map(|x| fq_chip.load_private(ctx, FqChip::<F>::fe_to_witness(&x)));
-    let [Rx, Ry] = [R.x, R.y].map(|x| fq_chip.load_private(ctx, FpChip::<F>::fe_to_witness(&x)));
-    let R = EcPoint::construct(Rx, Ry);
+    let [m, s] = [msghash, s].map(|x| fq_chip.load_private(ctx, x));
+    let [Rx, Ry] = [R.x, R.y].map(|x| fp_chip.load_private(ctx, x));
+    let R = EcPoint::new(Rx, Ry);
 
     let ecc_chip = EccChip::<F, FpChip<F>>::new(&fp_chip);
-    let pk = ecc_chip.load_private(ctx, (pk.x, pk.y));
+    let pk = ecc_chip.load_private_unchecked(ctx, (pk.x, pk.y));
     // test EdDSA
-    let res = eddsa_verify::<F, Fq, Fr, Ed25519Affine>(&fp_chip, ctx, &pk, &R, &s, &m, 4, 4);
+    let res = eddsa_verify::<F, Fp, Fq, Ed25519Affine>(&ecc_chip, ctx, pk, R, s, m, 4, 4);
     assert_eq!(res.value(), &F::one());
 }
 
@@ -75,18 +75,18 @@ fn random_eddsa_circuit(
     params: CircuitParams,
     stage: CircuitBuilderStage,
     break_points: Option<MultiPhaseThreadBreakPoints>,
-) -> RangeCircuitBuilder<Fs> {
+) -> RangeCircuitBuilder<Fr> {
     // TODO: generate eddsa sig and verify in circuit
     use sha2::{Digest, Sha512};
 
-    fn hash_to_fr(hash: Sha512) -> Fr {
+    fn hash_to_fr(hash: Sha512) -> Fq {
         let mut output = [0u8; 64];
         output.copy_from_slice(hash.finalize().as_slice());
 
-        Fr::from_bytes_wide(&output)
+        Fq::from_bytes_wide(&output)
     }
 
-    fn seed_to_key(seed: [u8; 32]) -> (Fr, [u8; 32], [u8; 32]) {
+    fn seed_to_key(seed: [u8; 32]) -> (Fq, [u8; 32], [u8; 32]) {
         // Expand the seed to a 64-byte array with SHA512.
         let h = Sha512::digest(&seed[..]);
 
@@ -104,7 +104,7 @@ fn random_eddsa_circuit(
             let mut scalar_bytes_wide = [0u8; 64];
             scalar_bytes_wide[0..32].copy_from_slice(&scalar_bytes);
 
-            Fr::from_bytes_wide(&scalar_bytes_wide)
+            Fq::from_bytes_wide(&scalar_bytes_wide)
         };
 
         // Extract and cache the high half.
@@ -122,7 +122,7 @@ fn random_eddsa_circuit(
         (s, prefix, A_bytes)
     }
 
-    fn sign(s: Fr, prefix: [u8; 32], A_bytes: [u8; 32], msg: &[u8]) -> ([u8; 32], [u8; 32]) {
+    fn sign(s: Fq, prefix: [u8; 32], A_bytes: [u8; 32], msg: &[u8]) -> ([u8; 32], [u8; 32]) {
         let r = hash_to_fr(Sha512::default().chain(&prefix[..]).chain(msg));
 
         let R_bytes = Ed25519Affine::from(Ed25519Affine::generator() * &r).to_bytes();
@@ -166,7 +166,7 @@ fn random_eddsa_circuit(
     );
 
     let R = Ed25519Affine::from_bytes(R_bytes).unwrap();
-    let s = Fr::from_bytes(&s_bytes).unwrap();
+    let s = Fq::from_bytes(&s_bytes).unwrap();
     let A = Ed25519Affine::from_bytes(A_bytes).unwrap();
 
     let start0 = start_timer!(|| format!("Witness generation for circuit in {stage:?} stage"));

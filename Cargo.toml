@@ -11,8 +11,8 @@ rand = "0.8"
 
 plotters = { version = "0.3.0", optional = true }
 
-halo2-base = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "release-0.3.0" }
-halo2-ecc = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "release-0.3.0" }
+halo2-base = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "community-edition" }
+halo2-ecc = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "community-edition" }
 
 [dev-dependencies]
 ark-std = { version = "0.3.0", features = ["print-trace"] }
