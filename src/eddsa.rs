@@ -16,7 +16,8 @@ use super::fixed_base;
 // SF is the scalar field of GA
 // p = coordinate field modulus
 // n = scalar field modulus
-// Assumes `r, s` are proper CRT integers
+// Assumes `s` is proper CRT integer
+/// TODO: Check `pubkey` should not be the identity point
 #[allow(non_snake_case)]
 pub fn eddsa_verify<F: PrimeField, CF: PrimeField, SF: PrimeField, GA>(
     chip: &EccChip<F, FpChip<F, CF>>,
