@@ -37,8 +37,8 @@ where
     FC: FieldChip<F>,
     C: CurveAffine<Base = FC::FieldType>,
 {
+    // TODO: Hacky, is there a better way to do this?
     let d = chip.load_constant(ctx, C::b());
-    let one = chip.load_constant(ctx, FC::FieldType::one());
 
     // x3 = (x1 * y2 + y1 * x2) / (1 + d * x1 * x2 * y1 * y2)
     let x1_y2 = chip.mul(ctx, &P.x, &Q.y);
@@ -46,7 +46,7 @@ where
     let x1_x2_y1_y2 = chip.mul(ctx, &x1_y2, &y1_x2);
     let d_x1_x2_y1_y2 = chip.mul(ctx, &d, &x1_x2_y1_y2);
 
-    let denominator_x = chip.add_no_carry(ctx, &one, &d_x1_x2_y1_y2);
+    let denominator_x = chip.add_constant_no_carry(ctx, &d_x1_x2_y1_y2, FC::FieldType::one());
     let numerator_x = chip.add_no_carry(ctx, &x1_y2, &y1_x2);
 
     let x_3 = chip.divide_unsafe(ctx, &numerator_x, &denominator_x);
@@ -56,6 +56,7 @@ where
     let x1_x2 = chip.mul(ctx, &P.x, &Q.x);
 
     let numerator_y = chip.add_no_carry(ctx, &y1_y2, &x1_x2);
+    let one = chip.load_constant(ctx, FC::FieldType::one());
     let denominator_y = chip.sub_no_carry(ctx, &one, &d_x1_x2_y1_y2);
 
     let y_3 = chip.divide_unsafe(ctx, &numerator_y, &denominator_y);
@@ -81,8 +82,8 @@ where
     FC: FieldChip<F>,
     C: CurveAffine<Base = FC::FieldType>,
 {
+    // TODO: Hacky, is there a better way to do this?
     let d = chip.load_constant(ctx, C::b());
-    let one = chip.load_constant(ctx, FC::FieldType::one());
 
     // x3 = (x1 * y2 + y1 * x2) / (1 + d * x1 * x2 * y1 * y2)
     let x1_y2 = chip.mul(ctx, &P.x, &Q.y);
@@ -90,6 +91,7 @@ where
     let x1_x2_y1_y2 = chip.mul(ctx, &x1_y2, &y1_x2);
     let d_x1_x2_y1_y2 = chip.mul(ctx, &d, &x1_x2_y1_y2);
 
+    let one = chip.load_constant(ctx, FC::FieldType::one());
     let denominator_x = chip.sub_no_carry(ctx, &one, &d_x1_x2_y1_y2);
     let numerator_x = chip.sub_no_carry(ctx, &x1_y2, &y1_x2);
 
@@ -100,7 +102,7 @@ where
     let x1_x2 = chip.mul(ctx, &P.x, &Q.x);
 
     let numerator_y = chip.sub_no_carry(ctx, &y1_y2, &x1_x2);
-    let denominator_y = chip.add_no_carry(ctx, &one, &d_x1_x2_y1_y2);
+    let denominator_y = chip.add_constant_no_carry(ctx, &d_x1_x2_y1_y2, FC::FieldType::one());
 
     let y_3 = chip.divide_unsafe(ctx, &numerator_y, &denominator_y);
 
@@ -117,15 +119,15 @@ where
     FC: FieldChip<F>,
     C: CurveAffine<Base = FC::FieldType>,
 {
+    // TODO: Hacky, is there a better way to do this?
     let d = chip.load_constant(ctx, C::b());
-    let one = chip.load_constant(ctx, FC::FieldType::one());
 
     // x2 = (2 * x1 * y1) / (1 + d * x1^2 * y1^2)
     let x1_y1 = chip.mul(ctx, &P.x, &P.y);
     let x1_y1_2 = chip.mul(ctx, &x1_y1, &x1_y1);
     let d_x1_y1_2 = chip.mul(ctx, &d, &x1_y1_2);
 
-    let denominator_x = chip.add_no_carry(ctx, &one, &d_x1_y1_2);
+    let denominator_x = chip.add_constant_no_carry(ctx, &d_x1_y1_2, FC::FieldType::one());
     let numerator_x = chip.scalar_mul_no_carry(ctx, &x1_y1, 2);
 
     let x_3 = chip.divide_unsafe(ctx, &numerator_x, &denominator_x);
@@ -135,6 +137,7 @@ where
     let y1_2 = chip.mul(ctx, &P.y, &P.y);
 
     let numerator_y = chip.add_no_carry(ctx, &y1_2, &x1_2);
+    let one = chip.load_constant(ctx, FC::FieldType::one());
     let denominator_y = chip.sub_no_carry(ctx, &one, &d_x1_y1_2);
 
     let y_3 = chip.divide_unsafe(ctx, &numerator_y, &denominator_y);
@@ -261,13 +264,14 @@ where
     FC: FieldChip<F>,
     C: CurveAffine<Base = FC::FieldType>,
 {
-    let x2 = chip.mul_no_carry(ctx, &P.x, &P.x);
-    let y2 = chip.mul_no_carry(ctx, &P.y, &P.y);
+    let x2 = chip.mul(ctx, &P.x, &P.x);
+    let y2 = chip.mul(ctx, &P.y, &P.y);
     let lhs = chip.sub_no_carry(ctx, &y2, &x2);
 
+    // TODO: Hacky, is there a better way to do this?
     let d = chip.load_constant(ctx, C::b());
 
-    let mut d_x2_y2 = chip.mul_no_carry(ctx, &x2, &y2);
+    let mut d_x2_y2 = chip.mul(ctx, &x2, &y2);
     d_x2_y2 = chip.mul(ctx, &d, &d_x2_y2).into();
     let rhs = chip.add_constant_no_carry(ctx, d_x2_y2, FC::FieldType::one());
 
