@@ -9,6 +9,9 @@ use halo2_ecc::{
     ecc::{ec_select, ec_select_from_bits, EcPoint},
     fields::{fp::FpChip, FieldChip, PrimeField, PrimeFieldChip, Selectable},
 };
+use group::{Curve, Group};
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use std::marker::PhantomData;
 
 use super::fixed_base;
@@ -270,6 +273,24 @@ where
 
     let diff = chip.sub_no_carry(ctx, lhs, rhs);
     chip.check_carry_mod_to_zero(ctx, diff)
+}
+
+pub fn load_random_point<F, FC, C>(chip: &FC, ctx: &mut Context<F>) -> EcPoint<F, FC::FieldPoint>
+where
+    F: PrimeField,
+    FC: FieldChip<F>,
+    C: CurveAffineExt<Base = FC::FieldType>,
+{
+    let base_point: C = C::CurveExt::random(ChaCha20Rng::from_entropy()).to_affine();
+    let (x, y) = base_point.into_coordinates();
+    let base = {
+        let x_overflow = chip.load_private(ctx, x);
+        let y_overflow = chip.load_private(ctx, y);
+        EcPoint::new(x_overflow, y_overflow)
+    };
+    // for above reason we still need to constrain that the witness is on the curve
+    check_is_on_curve::<F, FC, C>(chip, ctx, &base);
+    base
 }
 
 pub type BaseFieldEccChip<'chip, C> = EccChip<
