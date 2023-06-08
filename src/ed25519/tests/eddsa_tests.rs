@@ -1,14 +1,14 @@
 #![allow(non_snake_case)]
-use crate::halo2_proofs::{
+use halo2_base::halo2_proofs::{
     arithmetic::CurveAffine,
     dev::MockProver,
     halo2curves::bn256::Fr,
-    halo2curves::ed25519::{Fp, Fq, Ed25519Affine},
+    halo2curves::ed25519::{Fq as Fp, Fr as Fq, Ed25519Affine},
 };
 use crate::ed25519::{FpChip, FqChip};
 use crate::{
-    ecc::{eddsa::eddsa_verify_no_pubkey_check, EccChip},
-    fields::{FieldChip, PrimeField},
+    ecc::EccChip,
+    eddsa::eddsa_verify,
 };
 use ark_std::{end_timer, start_timer};
 use halo2_base::gates::builder::{
@@ -18,6 +18,7 @@ use halo2_base::gates::builder::{
 use halo2_base::gates::RangeChip;
 use halo2_base::utils::{biguint_to_fe, fe_to_biguint, modulus};
 use halo2_base::Context;
+use halo2_ecc::fields::{FieldChip, PrimeField};
 use rand::random;
 use rand_core::OsRng;
 use std::fs::File;
@@ -43,7 +44,7 @@ fn eddsa_test<F: PrimeField>(
     let ecc_chip = EccChip::<F, FpChip<F>>::new(&fp_chip);
     let pk = ecc_chip.assign_point(ctx, pk);
     // test EDDSA
-    let res = eddsa_verify_no_pubkey_check::<F, Fp, Fq, Ed25519Affine>(
+    let res = eddsa_verify::<F, Fp, Fq, Ed25519Affine>(
         &ecc_chip, ctx, pk, r, s, m, 4, 4,
     );
     assert_eq!(res.value(), &F::one());

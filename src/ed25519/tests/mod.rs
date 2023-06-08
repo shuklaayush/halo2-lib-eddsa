@@ -1,5 +1,5 @@
-/*
 #![allow(non_snake_case)]
+/*
 use std::fs::File;
 
 use ff::Field;
@@ -25,18 +25,18 @@ use halo2_base::{
 use num_bigint::BigUint;
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
+use halo2_ecc::fields::{FieldChip, FpStrategy};
 
 use crate::{
     ecc::EccChip,
-    fields::{FieldChip, FpStrategy},
     ed25519::{FpChip, FqChip},
 };
 */
 
 pub mod eddsa;
-/*
-pub mod eddsa_tests;
+// pub mod eddsa_tests;
 
+/*
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 struct CircuitParams {
     strategy: FpStrategy,
