@@ -8,7 +8,7 @@ use halo2_ecc::{
 use itertools::Itertools;
 use std::cmp::min;
 
-use super::ecc::ec_add;
+use super::ecc::{ec_add, ec_sub, load_random_point};
 
 /// Computes `[scalar] * P` on y^2 = x^3 + b where `P` is fixed (constant)
 /// - `scalar` is represented as a non-empty reference array of `AssignedValue`s
@@ -87,28 +87,17 @@ where
 
     let cached_point_window_rev = cached_points.chunks(1usize << window_bits).rev();
     let bit_window_rev = bits.chunks(window_bits).rev();
-    let mut curr_point = None;
-    // `is_started` is just a way to deal with if `curr_point` is actually identity
-    let mut is_started = ctx.load_zero();
+    let any_point = load_random_point::<F, FC, C>(chip, ctx);
+    let mut curr_point = any_point.clone();
     for (cached_point_window, bit_window) in cached_point_window_rev.zip(bit_window_rev) {
         let bit_sum = chip.gate().sum(ctx, bit_window.iter().copied());
         // are we just adding a window of all 0s? if so, skip
         let is_zero_window = chip.gate().is_zero(ctx, bit_sum);
-        let add_point = ec_select_from_bits(chip, ctx, cached_point_window, bit_window);
-        curr_point = if let Some(curr_point) = curr_point {
+        curr_point = {
+            let add_point = ec_select_from_bits(chip, ctx, cached_point_window, bit_window);
             let sum = ec_add::<F, FC, C>(chip, ctx, &curr_point, &add_point);
-            let zero_sum = ec_select(chip, ctx, curr_point, sum, is_zero_window);
-            Some(ec_select(chip, ctx, zero_sum, add_point, is_started))
-        } else {
-            Some(add_point)
-        };
-        is_started = {
-            // is_started || !is_zero_window
-            // (a || !b) = (1-b) + a*b
-            let not_zero_window = chip.gate().not(ctx, is_zero_window);
-            chip.gate()
-                .mul_add(ctx, is_started, is_zero_window, not_zero_window)
+            ec_select(chip, ctx, curr_point, sum, is_zero_window)
         };
     }
-    curr_point.unwrap()
+    ec_sub::<F, FC, C>(chip, ctx, &curr_point, &any_point)
 }
