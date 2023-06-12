@@ -53,7 +53,7 @@ fn eddsa_test<F: PrimeField>(
     R: Ed25519Affine,
     s: Fq,
     msghash: Fq,
-    pk: Ed25519Affine,
+    pubkey: Ed25519Affine,
 ) {
     std::env::set_var("LOOKUP_BITS", params.lookup_bits.to_string());
     let range = RangeChip::<F>::default(params.lookup_bits);
@@ -65,9 +65,9 @@ fn eddsa_test<F: PrimeField>(
     let R = EcPoint::new(Rx, Ry);
 
     let ecc_chip = EccChip::<F, FpChip<F>>::new(&fp_chip);
-    let pk = ecc_chip.load_private_unchecked(ctx, (pk.x, pk.y));
+    let pubkey = ecc_chip.load_private_unchecked(ctx, (pubkey.x, pubkey.y));
     // test EdDSA
-    let res = eddsa_verify::<F, Fp, Fq, Ed25519Affine>(&ecc_chip, ctx, pk, R, s, m, 4, 4);
+    let res = eddsa_verify::<F, Fp, Fq, Ed25519Affine>(&ecc_chip, ctx, pubkey, R, s, m, 4, 4);
     assert_eq!(res.value(), &F::one());
 }
 
@@ -122,7 +122,7 @@ fn random_eddsa_circuit(
         (s, prefix, A_bytes)
     }
 
-    fn sign(s: Fq, prefix: [u8; 32], A_bytes: [u8; 32], msg: &[u8]) -> ([u8; 32], [u8; 32]) {
+    fn sign(s: Fq, prefix: [u8; 32], A_bytes: [u8; 32], msg: &[u8]) -> [u8; 64] {
         let r = hash_to_fr(Sha512::default().chain(&prefix[..]).chain(msg));
 
         let R_bytes = Ed25519Affine::from(Ed25519Affine::generator() * &r).to_bytes();
@@ -136,7 +136,11 @@ fn random_eddsa_circuit(
 
         let s_bytes = (r + s * k).to_bytes();
 
-        (R_bytes, s_bytes)
+        let mut signature = [0u8; 64];
+        signature[..32].copy_from_slice(&R_bytes[..]);
+        signature[32..].copy_from_slice(&s_bytes[..]);
+
+        signature
     }
 
     let mut rng = OsRng;
@@ -155,7 +159,12 @@ fn random_eddsa_circuit(
 
     // Generate a valid signature
     let msg = b"test message";
-    let (R_bytes, s_bytes) = sign(s, prefix, A_bytes, msg);
+    let signature = sign(s, prefix, A_bytes, msg);
+
+    let mut R_bytes = [0u8; 32];
+    let mut s_bytes = [0u8; 32];
+    R_bytes.copy_from_slice(&signature[..32]);
+    s_bytes.copy_from_slice(&signature[32..]);
 
     // TODO: Rename
     let msg_hash = hash_to_fr(
