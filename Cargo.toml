@@ -12,20 +12,34 @@ rand_chacha = "0.3.1"
 plotters = { version = "0.3.0", optional = true }
 test-case = "3.1.0"
 
+# server
+ark-std = { version = "0.3.0", features = ["print-trace"] }
+base64 = "0.21.2"
+clap = { version = "4.3.3", features = ["derive"] }
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+serde_json = "1.0"
+rocket = { version = "0.4", optional = true }
+rocket_contrib = { version = "0.4", optional = true, default-features = false, features = ["json"] }
+rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
+sha2 = "0.9"
+ssh-key = { version = "0.5.1", features = ["ed25519"] }
+
 halo2-base = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "community-edition" }
 halo2-ecc = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "community-edition" }
+rocket_cors = "0.5.2"
 
 [dev-dependencies]
-ark-std = { version = "0.3.0", features = ["print-trace"] }
 num-traits = "0.2"
-rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-sha2 = "0.9"
+
+[[bin]]
+name = "server"
+path = "src/ed25519/bin/server.rs"
+required-features = ["server"]
 
 [features]
-default = ["dev-graph"]
+default = ["dev-graph", "server"]
 dev-graph = ["halo2-base/dev-graph", "plotters"]
+server = ["dep:rocket", "dep:rocket_contrib"]
 
 [patch.'https://github.com/axiom-crypto/halo2.git']
 halo2_proofs_axiom = { git = "https://github.com/shuklaayush/halo2.git", branch = "feat/ed25519", package = "halo2_proofs" }

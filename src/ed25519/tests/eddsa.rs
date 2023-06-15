@@ -1,13 +1,12 @@
 #![allow(non_snake_case)]
 use ark_std::{end_timer, start_timer};
 use halo2_base::gates::builder::{
-    CircuitBuilderStage, GateThreadBuilder, MultiPhaseThreadBreakPoints, RangeCircuitBuilder,
+    CircuitBuilderStage, MultiPhaseThreadBreakPoints, RangeCircuitBuilder,
 };
-use halo2_base::gates::RangeChip;
 use halo2_base::halo2_proofs::{
     dev::MockProver,
     halo2curves::bn256::{Bn256, Fr, G1Affine},
-    halo2curves::ed25519::{Ed25519Affine, Fq as Fp, Fr as Fq},
+    halo2curves::ed25519::{Ed25519Affine, Fr as Fq},
     plonk::*,
     poly::commitment::ParamsProver,
     transcript::{Blake2bRead, Blake2bWrite, Challenge255},
@@ -21,54 +20,20 @@ use halo2_base::halo2_proofs::{
     transcript::{TranscriptReadBuffer, TranscriptWriterBuffer},
 };
 use halo2_base::utils::fs::gen_srs;
-use halo2_base::Context;
-use halo2_ecc::ecc::EcPoint;
-use halo2_ecc::fields::{FieldChip, FpStrategy, PrimeField};
+use halo2_ecc::fields::PrimeField;
 use rand::RngCore;
 use rand_core::OsRng;
-use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha512};
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Write;
 use std::{fs, io::BufRead};
 
-use crate::ed25519::{FpChip, FqChip};
-use crate::{ecc::EccChip, eddsa::eddsa_verify};
+use super::super::utils::{eddsa_circuit, CircuitParams};
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-struct CircuitParams {
-    strategy: FpStrategy,
-    degree: u32,
-    num_advice: usize,
-    num_lookup_advice: usize,
-    num_fixed: usize,
-    lookup_bits: usize,
-    limb_bits: usize,
-    num_limbs: usize,
-}
-
-fn eddsa_test<F: PrimeField>(
-    ctx: &mut Context<F>,
-    params: CircuitParams,
-    R: Ed25519Affine,
-    s: Fq,
-    msghash: Fq,
-    pubkey: Ed25519Affine,
-) {
-    std::env::set_var("LOOKUP_BITS", params.lookup_bits.to_string());
-    let range = RangeChip::<F>::default(params.lookup_bits);
-    let fp_chip = FpChip::<F>::new(&range, params.limb_bits, params.num_limbs);
-    let fq_chip = FqChip::<F>::new(&range, params.limb_bits, params.num_limbs);
-
-    let [m, s] = [msghash, s].map(|x| fq_chip.load_private(ctx, x));
-    let [Rx, Ry] = [R.x, R.y].map(|x| fp_chip.load_private(ctx, x));
-    let R = EcPoint::new(Rx, Ry);
-
-    let ecc_chip = EccChip::<F, FpChip<F>>::new(&fp_chip);
-    let pubkey = ecc_chip.load_private_unchecked(ctx, (pubkey.x, pubkey.y));
-    // test EdDSA
-    let res = eddsa_verify::<F, Fp, Fq, Ed25519Affine>(&ecc_chip, ctx, pubkey, R, s, m, 4, 4);
-    assert_eq!(res.value(), &F::one());
+fn hash_to_fe(hash: Sha512) -> Fq {
+    let output: [u8; 64] = hash.finalize().as_slice().try_into().unwrap();
+    Fq::from_bytes_wide(&output)
 }
 
 fn random_eddsa_circuit(
@@ -77,23 +42,13 @@ fn random_eddsa_circuit(
     break_points: Option<MultiPhaseThreadBreakPoints>,
 ) -> RangeCircuitBuilder<Fr> {
     // TODO: generate eddsa sig and verify in circuit
-    use sha2::{Digest, Sha512};
-
-    fn hash_to_fr(hash: Sha512) -> Fq {
-        let mut output = [0u8; 64];
-        output.copy_from_slice(hash.finalize().as_slice());
-
-        Fq::from_bytes_wide(&output)
-    }
-
     fn seed_to_key(seed: [u8; 32]) -> (Fq, [u8; 32], [u8; 32]) {
         // Expand the seed to a 64-byte array with SHA512.
         let h = Sha512::digest(&seed[..]);
 
         // Convert the low half to a scalar with Ed25519 "clamping"
         let s = {
-            let mut scalar_bytes = [0u8; 32];
-            scalar_bytes[..].copy_from_slice(&h.as_slice()[0..32]);
+            let mut scalar_bytes: [u8; 32] = h.as_slice()[0..32].try_into().unwrap();
             // Clear the lowest three bits to make the scalar a multiple of 8
             scalar_bytes[0] &= 248;
             // Clear highest bit
@@ -108,26 +63,21 @@ fn random_eddsa_circuit(
         };
 
         // Extract and cache the high half.
-        let prefix = {
-            let mut prefix = [0u8; 32];
-            prefix[..].copy_from_slice(&h.as_slice()[32..64]);
-            prefix
-        };
+        let prefix = h.as_slice()[32..64].try_into().unwrap();
 
         // Compute the public key as A = [s]B.
         let A = Ed25519Affine::from(Ed25519Affine::generator() * &s);
-
         let A_bytes = A.to_bytes();
 
         (s, prefix, A_bytes)
     }
 
     fn sign(s: Fq, prefix: [u8; 32], A_bytes: [u8; 32], msg: &[u8]) -> [u8; 64] {
-        let r = hash_to_fr(Sha512::default().chain(&prefix[..]).chain(msg));
+        let r = hash_to_fe(Sha512::default().chain(&prefix[..]).chain(msg));
 
         let R_bytes = Ed25519Affine::from(Ed25519Affine::generator() * &r).to_bytes();
 
-        let k = hash_to_fr(
+        let k = hash_to_fe(
             Sha512::default()
                 .chain(&R_bytes[..])
                 .chain(&A_bytes[..])
@@ -143,57 +93,18 @@ fn random_eddsa_circuit(
         signature
     }
 
-    let mut rng = OsRng;
-
-    let mut builder = match stage {
-        CircuitBuilderStage::Mock => GateThreadBuilder::mock(),
-        CircuitBuilderStage::Prover => GateThreadBuilder::prover(),
-        CircuitBuilderStage::Keygen => GateThreadBuilder::keygen(),
-    };
-
     // Generate a key pair
     let mut seed = [0u8; 32];
+    let mut rng = OsRng;
     rng.fill_bytes(&mut seed[..]);
 
     let (s, prefix, A_bytes) = seed_to_key(seed);
 
     // Generate a valid signature
     let msg = b"test message";
-    let signature = sign(s, prefix, A_bytes, msg);
+    let sig = sign(s, prefix, A_bytes, msg);
 
-    let mut R_bytes = [0u8; 32];
-    let mut s_bytes = [0u8; 32];
-    R_bytes.copy_from_slice(&signature[..32]);
-    s_bytes.copy_from_slice(&signature[32..]);
-
-    // TODO: Rename
-    let msg_hash = hash_to_fr(
-        Sha512::default()
-            .chain(&R_bytes[..])
-            .chain(&A_bytes[..])
-            .chain(msg),
-    );
-
-    let R = Ed25519Affine::from_bytes(R_bytes).unwrap();
-    let s = Fq::from_bytes(&s_bytes).unwrap();
-    let A = Ed25519Affine::from_bytes(A_bytes).unwrap();
-
-    let start0 = start_timer!(|| format!("Witness generation for circuit in {stage:?} stage"));
-    eddsa_test(builder.main(0), params, R, s, msg_hash, A);
-
-    let circuit = match stage {
-        CircuitBuilderStage::Mock => {
-            builder.config(params.degree as usize, Some(20));
-            RangeCircuitBuilder::mock(builder)
-        }
-        CircuitBuilderStage::Keygen => {
-            builder.config(params.degree as usize, Some(20));
-            RangeCircuitBuilder::keygen(builder)
-        }
-        CircuitBuilderStage::Prover => RangeCircuitBuilder::prover(builder, break_points.unwrap()),
-    };
-    end_timer!(start0);
-    circuit
+    eddsa_circuit(params, stage, break_points, &sig, &A_bytes, msg)
 }
 
 #[test]
@@ -208,6 +119,158 @@ fn test_ed25519_eddsa() {
     MockProver::run(params.degree, &circuit, vec![])
         .unwrap()
         .assert_satisfied();
+}
+
+#[cfg(feature = "dev-graph")]
+#[test]
+fn test_ed25519_eddsa_plot() {
+    use plotters::prelude::*;
+
+    let root = BitMapBackend::new("layout.png", (1920, 1080)).into_drawing_area();
+    root.fill(&WHITE).unwrap();
+    let root = root.titled("Ed25519 Layout", ("sans-serif", 60)).unwrap();
+
+    let path = "configs/ed25519/eddsa_circuit.config";
+    let params: CircuitParams = serde_json::from_reader(
+        File::open(path).unwrap_or_else(|e| panic!("{path} does not exist: {e:?}")),
+    )
+    .unwrap();
+
+    let circuit = random_eddsa_circuit(params, CircuitBuilderStage::Mock, None);
+    MockProver::run(params.degree, &circuit, vec![])
+        .unwrap()
+        .assert_satisfied();
+
+    halo2_base::halo2_proofs::dev::CircuitLayout::default()
+        .render(params.degree as u32, &circuit, &root)
+        .unwrap();
+}
+
+#[test]
+fn test_ssh_ed25519() {
+    use ssh_key::SshSig;
+
+    let path = "configs/ed25519/eddsa_circuit.config";
+    let circuit_params: CircuitParams = serde_json::from_reader(
+        File::open(path).unwrap_or_else(|e| panic!("{path} does not exist: {e:?}")),
+    )
+    .unwrap();
+
+    let ed25519_sig = "-----BEGIN SSH SIGNATURE-----\nU1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAg2jSEHYIEAcIfwZ2P9gnNUL7L1g\nqjkP1XG35XMGVvT+8AAAADZ2l0AAAAAAAAAAZzaGE1MTIAAABTAAAAC3NzaC1lZDI1NTE5\nAAAAQGOlq7vRfb6sd2m1V+lQEKj1/IKwck8p+Xcuu5/j4pZEDLICcEWcbKSz76XrddeUnY\nCvY/+F+UevG1iOUleRXww=\n-----END SSH SIGNATURE-----";
+    let payload = "tree cb00595c68ae966d5a0319f44a07aae75e17118f\nparent bb588e3edd556583426e7f47856ca70a130f3b09\nauthor Ayush Shukla <shuklaayush247@gmail.com> 1686598553 +0200\ncommitter Ayush Shukla <shuklaayush247@gmail.com> 1686598626 +0200\n\nfix: produce concatenated signature\n";
+
+    let sshsig = ed25519_sig.parse::<SshSig>().unwrap();
+    let msg: &[u8] =
+        &SshSig::signed_data(sshsig.namespace(), sshsig.hash_alg(), payload.as_bytes()).unwrap();
+
+    let A_bytes: &[u8; 32] = sshsig.public_key().ed25519().unwrap().as_ref();
+    let sig: &[u8; 64] = sshsig.signature().as_bytes().try_into().unwrap();
+
+    // let circuit = eddsa_circuit(circuit_params, CircuitBuilderStage::Mock, None, &sig, &A_bytes, msg);
+    // MockProver::run(circuit_params.degree, &circuit, vec![])
+    //     .unwrap()
+    //     .assert_satisfied();
+
+    let k = circuit_params.degree;
+    let srs_params = gen_srs(k);
+    let mut rng = OsRng;
+
+    let circuit = eddsa_circuit(
+        circuit_params,
+        CircuitBuilderStage::Keygen,
+        None,
+        &sig,
+        &A_bytes,
+        msg,
+    );
+
+    let vk_time = start_timer!(|| "Generating vkey");
+    let vk = keygen_vk(&srs_params, &circuit).unwrap();
+    end_timer!(vk_time);
+
+    let pk_time = start_timer!(|| "Generating pkey");
+    let pk = keygen_pk(&srs_params, vk, &circuit).unwrap();
+    end_timer!(pk_time);
+
+    let break_points = circuit.0.break_points.take();
+    drop(circuit);
+    // create a proof
+    let proof_time = start_timer!(|| "Proving time");
+    let circuit = eddsa_circuit(
+        circuit_params,
+        CircuitBuilderStage::Prover,
+        Some(break_points),
+        &sig,
+        &A_bytes,
+        msg,
+    );
+    let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
+    create_proof::<
+        KZGCommitmentScheme<Bn256>,
+        ProverSHPLONK<'_, Bn256>,
+        Challenge255<G1Affine>,
+        _,
+        Blake2bWrite<Vec<u8>, G1Affine, Challenge255<G1Affine>>,
+        _,
+    >(
+        &srs_params,
+        &pk,
+        &[circuit],
+        &[&[]],
+        &mut rng,
+        &mut transcript,
+    )
+    .unwrap();
+    let proof = transcript.finalize();
+    end_timer!(proof_time);
+
+    let proof_size = proof.len();
+
+    let verify_time = start_timer!(|| "Verify time");
+    let verifier_params = srs_params.verifier_params();
+    let strategy = SingleStrategy::new(&srs_params);
+    let mut transcript = Blake2bRead::<_, _, Challenge255<_>>::init(&proof[..]);
+    verify_proof::<
+        KZGCommitmentScheme<Bn256>,
+        VerifierSHPLONK<'_, Bn256>,
+        Challenge255<G1Affine>,
+        Blake2bRead<&[u8], G1Affine, Challenge255<G1Affine>>,
+        SingleStrategy<'_, Bn256>,
+    >(
+        verifier_params,
+        pk.get_vk(),
+        strategy,
+        &[&[]],
+        &mut transcript,
+    )
+    .unwrap();
+    end_timer!(verify_time);
+
+    println!("\nCircuit Parameters:");
+    println!("  Degree                   : {}", circuit_params.degree);
+    println!("  Number of advice columns : {}", circuit_params.num_advice);
+    println!(
+        "  Number of lookup columns : {}",
+        circuit_params.num_lookup_advice
+    );
+    println!("  Number of fixed columns  : {}", circuit_params.num_fixed);
+    println!(
+        "  Lookup bits              : {}",
+        circuit_params.lookup_bits
+    );
+    println!("  Limb bits                : {}", circuit_params.limb_bits);
+    println!("  Number of limbs          : {}", circuit_params.num_limbs);
+
+    println!("\nBenchmarks:");
+    println!(
+        "  Proving time             : {:?}",
+        proof_time.time.elapsed()
+    );
+    println!("  Proof size               : {} bytes", proof_size);
+    println!(
+        "  Verification time        : {:?}",
+        verify_time.time.elapsed()
+    );
 }
 
 #[test]
