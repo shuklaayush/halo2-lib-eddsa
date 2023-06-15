@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+use group::{Curve, Group};
 use halo2_base::{
     gates::{GateInstructions, RangeInstructions},
     halo2_proofs::arithmetic::CurveAffine,
@@ -9,7 +10,6 @@ use halo2_ecc::{
     ecc::{ec_select, ec_select_from_bits, EcPoint},
     fields::{fp::FpChip, FieldChip, PrimeField, PrimeFieldChip, Selectable},
 };
-use group::{Curve, Group};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use std::marker::PhantomData;
@@ -258,7 +258,13 @@ where
     }
     // if at the end, return identity point (0,0) if still not started
     let zero = chip.load_constant(ctx, FC::FieldType::zero());
-    ec_select(chip, ctx, curr_point, EcPoint::new(zero.clone(), zero), *is_started.last().unwrap())
+    ec_select(
+        chip,
+        ctx,
+        curr_point,
+        EcPoint::new(zero.clone(), zero),
+        *is_started.last().unwrap(),
+    )
 }
 
 /// Checks that `P` is indeed a point on the elliptic curve `C`.
