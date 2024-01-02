@@ -1,17 +1,7 @@
 #![allow(non_snake_case)]
 use ark_std::{end_timer, start_timer};
-use halo2_base::gates::builder::{
-    CircuitBuilderStage, MultiPhaseThreadBreakPoints, RangeCircuitBuilder,
-};
 use halo2_base::halo2_proofs::{
-    dev::MockProver,
-    halo2curves::bn256::{Bn256, Fr, G1Affine},
-    halo2curves::ed25519::{Ed25519Affine, Fr as Fq},
-    plonk::*,
-    poly::commitment::ParamsProver,
-    transcript::{Blake2bRead, Blake2bWrite, Challenge255},
-};
-use halo2_base::halo2_proofs::{
+    halo2curves::ff::FromUniformBytes,
     poly::kzg::{
         commitment::KZGCommitmentScheme,
         multiopen::{ProverSHPLONK, VerifierSHPLONK},
@@ -20,7 +10,20 @@ use halo2_base::halo2_proofs::{
     transcript::{TranscriptReadBuffer, TranscriptWriterBuffer},
 };
 use halo2_base::utils::fs::gen_srs;
-use halo2_ecc::fields::PrimeField;
+use halo2_base::{
+    gates::{
+        circuit::{builder::BaseCircuitBuilder, CircuitBuilderStage},
+        flex_gate::MultiPhaseThreadBreakPoints,
+    },
+    halo2_proofs::{
+        dev::MockProver,
+        halo2curves::bn256::{Bn256, Fr, G1Affine},
+        halo2curves::ed25519::{Ed25519Affine, Fr as Fq},
+        plonk::*,
+        poly::commitment::ParamsProver,
+        transcript::{Blake2bRead, Blake2bWrite, Challenge255},
+    },
+};
 use rand::RngCore;
 use rand_core::OsRng;
 use sha2::{Digest, Sha512};
@@ -33,14 +36,14 @@ use super::super::utils::{eddsa_circuit, CircuitParams};
 
 fn hash_to_fe(hash: Sha512) -> Fq {
     let output: [u8; 64] = hash.finalize().as_slice().try_into().unwrap();
-    Fq::from_bytes_wide(&output)
+    Fq::from_uniform_bytes(&output)
 }
 
 fn random_eddsa_circuit(
     params: CircuitParams,
     stage: CircuitBuilderStage,
     break_points: Option<MultiPhaseThreadBreakPoints>,
-) -> RangeCircuitBuilder<Fr> {
+) -> BaseCircuitBuilder<Fr> {
     // TODO: generate eddsa sig and verify in circuit
     fn seed_to_key(seed: [u8; 32]) -> (Fq, [u8; 32], [u8; 32]) {
         // Expand the seed to a 64-byte array with SHA512.
@@ -59,7 +62,7 @@ fn random_eddsa_circuit(
             let mut scalar_bytes_wide = [0u8; 64];
             scalar_bytes_wide[0..32].copy_from_slice(&scalar_bytes);
 
-            Fq::from_bytes_wide(&scalar_bytes_wide)
+            Fq::from_uniform_bytes(&scalar_bytes_wide)
         };
 
         // Extract and cache the high half.
@@ -192,7 +195,7 @@ fn test_ssh_ed25519() {
     let pk = keygen_pk(&srs_params, vk, &circuit).unwrap();
     end_timer!(pk_time);
 
-    let break_points = circuit.0.break_points.take();
+    let break_points = circuit.break_points();
     drop(circuit);
     // create a proof
     let proof_time = start_timer!(|| "Proving time");
@@ -304,7 +307,7 @@ fn bench_ed25519_eddsa() -> Result<(), Box<dyn std::error::Error>> {
         let pk = keygen_pk(&params, vk, &circuit)?;
         end_timer!(pk_time);
 
-        let break_points = circuit.0.break_points.take();
+        let break_points = circuit.break_points();
         drop(circuit);
         // create a proof
         let proof_time = start_timer!(|| "Proving time");
