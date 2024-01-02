@@ -1,9 +1,6 @@
 #![allow(non_snake_case)]
 use halo2_base::{
-    gates::{
-        circuit::{builder::BaseCircuitBuilder, CircuitBuilderStage},
-        RangeChip,
-    },
+    gates::circuit::{builder::BaseCircuitBuilder, CircuitBuilderStage},
     halo2_proofs::{
         dev::MockProver,
         halo2curves::{

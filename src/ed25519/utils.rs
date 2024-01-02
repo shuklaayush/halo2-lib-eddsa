@@ -3,14 +3,14 @@ use ark_std::{end_timer, start_timer};
 use halo2_base::gates::circuit::builder::BaseCircuitBuilder;
 use halo2_base::gates::circuit::CircuitBuilderStage;
 use halo2_base::gates::flex_gate::MultiPhaseThreadBreakPoints;
-use halo2_base::gates::RangeChip;
+
 use halo2_base::halo2_proofs::halo2curves::ff::FromUniformBytes;
 use halo2_base::halo2_proofs::{
     halo2curves::bn256::Fr,
     halo2curves::ed25519::{Ed25519Affine, Fq as Fp, Fr as Fq},
 };
 use halo2_base::utils::BigPrimeField;
-use halo2_base::Context;
+
 use halo2_ecc::ecc::EcPoint;
 use halo2_ecc::fields::{FieldChip, FpStrategy};
 use serde::{Deserialize, Serialize};

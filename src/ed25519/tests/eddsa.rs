@@ -69,7 +69,7 @@ fn random_eddsa_circuit(
         let prefix = h.as_slice()[32..64].try_into().unwrap();
 
         // Compute the public key as A = [s]B.
-        let A = Ed25519Affine::from(Ed25519Affine::generator() * &s);
+        let A = Ed25519Affine::from(Ed25519Affine::generator() * s);
         let A_bytes = A.to_bytes();
 
         (s, prefix, A_bytes)
@@ -78,7 +78,7 @@ fn random_eddsa_circuit(
     fn sign(s: Fq, prefix: [u8; 32], A_bytes: [u8; 32], msg: &[u8]) -> [u8; 64] {
         let r = hash_to_fe(Sha512::default().chain(&prefix[..]).chain(msg));
 
-        let R_bytes = Ed25519Affine::from(Ed25519Affine::generator() * &r).to_bytes();
+        let R_bytes = Ed25519Affine::from(Ed25519Affine::generator() * r).to_bytes();
 
         let k = hash_to_fe(
             Sha512::default()
@@ -182,8 +182,8 @@ fn test_ssh_ed25519() {
         circuit_params,
         CircuitBuilderStage::Keygen,
         None,
-        &sig,
-        &A_bytes,
+        sig,
+        A_bytes,
         msg,
     );
 
@@ -203,8 +203,8 @@ fn test_ssh_ed25519() {
         circuit_params,
         CircuitBuilderStage::Prover,
         Some(break_points),
-        &sig,
-        &A_bytes,
+        sig,
+        A_bytes,
         msg,
     );
     let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);

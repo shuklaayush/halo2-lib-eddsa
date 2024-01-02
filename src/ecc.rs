@@ -288,7 +288,7 @@ where
     let d = chip.load_constant(ctx, C::b());
 
     let mut d_x2_y2 = chip.mul(ctx, &x2, &y2);
-    d_x2_y2 = chip.mul(ctx, &d, &d_x2_y2).into();
+    d_x2_y2 = chip.mul(ctx, &d, &d_x2_y2);
     let rhs = chip.add_constant_no_carry(ctx, d_x2_y2, FC::FieldType::ONE);
 
     let diff = chip.sub_no_carry(ctx, lhs, rhs);
@@ -379,7 +379,7 @@ impl<'chip, F: BigPrimeField, FC: FieldChip<F>> EccChip<'chip, F, FC> {
     where
         C: CurveAffineExt<Base = FC::FieldType>,
     {
-        ec_add::<F, FC, C>(self.field_chip, ctx, &P, &Q)
+        ec_add::<F, FC, C>(self.field_chip, ctx, P, Q)
     }
 
     pub fn double<C>(
@@ -390,7 +390,7 @@ impl<'chip, F: BigPrimeField, FC: FieldChip<F>> EccChip<'chip, F, FC> {
     where
         C: CurveAffineExt<Base = FC::FieldType>,
     {
-        ec_double::<F, FC, C>(self.field_chip, ctx, &P)
+        ec_double::<F, FC, C>(self.field_chip, ctx, P)
     }
 
     pub fn is_equal(
