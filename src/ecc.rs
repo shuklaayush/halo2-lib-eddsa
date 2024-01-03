@@ -1,14 +1,19 @@
 #![allow(non_snake_case)]
-use group::{Curve, Group};
 use halo2_base::{
     gates::{GateInstructions, RangeInstructions},
-    halo2_proofs::arithmetic::CurveAffine,
-    utils::{modulus, CurveAffineExt},
+    halo2_proofs::{
+        arithmetic::CurveAffine,
+        halo2curves::{
+            ff::Field,
+            group::{Curve, Group},
+        },
+    },
+    utils::{modulus, BigPrimeField, CurveAffineExt},
     AssignedValue, Context,
 };
 use halo2_ecc::{
     ecc::{ec_select, ec_select_from_bits, EcPoint},
-    fields::{fp::FpChip, FieldChip, PrimeField, PrimeFieldChip, Selectable},
+    fields::{fp::FpChip, FieldChip, PrimeFieldChip, Selectable},
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -33,7 +38,7 @@ pub fn ec_add<F, FC, C>(
     Q: &EcPoint<F, FC::FieldPoint>,
 ) -> EcPoint<F, FC::FieldPoint>
 where
-    F: PrimeField,
+    F: BigPrimeField,
     FC: FieldChip<F>,
     C: CurveAffine<Base = FC::FieldType>,
 {
@@ -46,7 +51,7 @@ where
     let x1_x2_y1_y2 = chip.mul(ctx, &x1_y2, &y1_x2);
     let d_x1_x2_y1_y2 = chip.mul(ctx, &d, &x1_x2_y1_y2);
 
-    let denominator_x = chip.add_constant_no_carry(ctx, &d_x1_x2_y1_y2, FC::FieldType::one());
+    let denominator_x = chip.add_constant_no_carry(ctx, &d_x1_x2_y1_y2, FC::FieldType::ONE);
     let numerator_x = chip.add_no_carry(ctx, &x1_y2, &y1_x2);
 
     let x_3 = chip.divide_unsafe(ctx, &numerator_x, &denominator_x);
@@ -56,7 +61,7 @@ where
     let x1_x2 = chip.mul(ctx, &P.x, &Q.x);
 
     let numerator_y = chip.add_no_carry(ctx, &y1_y2, &x1_x2);
-    let one = chip.load_constant(ctx, FC::FieldType::one());
+    let one = chip.load_constant(ctx, FC::FieldType::ONE);
     let denominator_y = chip.sub_no_carry(ctx, &one, &d_x1_x2_y1_y2);
 
     let y_3 = chip.divide_unsafe(ctx, &numerator_y, &denominator_y);
@@ -78,7 +83,7 @@ pub fn ec_sub<F, FC, C>(
     Q: &EcPoint<F, FC::FieldPoint>,
 ) -> EcPoint<F, FC::FieldPoint>
 where
-    F: PrimeField,
+    F: BigPrimeField,
     FC: FieldChip<F>,
     C: CurveAffine<Base = FC::FieldType>,
 {
@@ -91,7 +96,7 @@ where
     let x1_x2_y1_y2 = chip.mul(ctx, &x1_y2, &y1_x2);
     let d_x1_x2_y1_y2 = chip.mul(ctx, &d, &x1_x2_y1_y2);
 
-    let one = chip.load_constant(ctx, FC::FieldType::one());
+    let one = chip.load_constant(ctx, FC::FieldType::ONE);
     let denominator_x = chip.sub_no_carry(ctx, &one, &d_x1_x2_y1_y2);
     let numerator_x = chip.sub_no_carry(ctx, &x1_y2, &y1_x2);
 
@@ -102,7 +107,7 @@ where
     let x1_x2 = chip.mul(ctx, &P.x, &Q.x);
 
     let numerator_y = chip.sub_no_carry(ctx, &y1_y2, &x1_x2);
-    let denominator_y = chip.add_constant_no_carry(ctx, &d_x1_x2_y1_y2, FC::FieldType::one());
+    let denominator_y = chip.add_constant_no_carry(ctx, &d_x1_x2_y1_y2, FC::FieldType::ONE);
 
     let y_3 = chip.divide_unsafe(ctx, &numerator_y, &denominator_y);
 
@@ -115,7 +120,7 @@ pub fn ec_double<F, FC, C>(
     P: &EcPoint<F, FC::FieldPoint>,
 ) -> EcPoint<F, FC::FieldPoint>
 where
-    F: PrimeField,
+    F: BigPrimeField,
     FC: FieldChip<F>,
     C: CurveAffine<Base = FC::FieldType>,
 {
@@ -127,7 +132,7 @@ where
     let x1_y1_2 = chip.mul(ctx, &x1_y1, &x1_y1);
     let d_x1_y1_2 = chip.mul(ctx, &d, &x1_y1_2);
 
-    let denominator_x = chip.add_constant_no_carry(ctx, &d_x1_y1_2, FC::FieldType::one());
+    let denominator_x = chip.add_constant_no_carry(ctx, &d_x1_y1_2, FC::FieldType::ONE);
     let numerator_x = chip.scalar_mul_no_carry(ctx, &x1_y1, 2);
 
     let x_3 = chip.divide_unsafe(ctx, &numerator_x, &denominator_x);
@@ -137,7 +142,7 @@ where
     let y1_2 = chip.mul(ctx, &P.y, &P.y);
 
     let numerator_y = chip.add_no_carry(ctx, &y1_2, &x1_2);
-    let one = chip.load_constant(ctx, FC::FieldType::one());
+    let one = chip.load_constant(ctx, FC::FieldType::ONE);
     let denominator_y = chip.sub_no_carry(ctx, &one, &d_x1_y1_2);
 
     let y_3 = chip.divide_unsafe(ctx, &numerator_y, &denominator_y);
@@ -154,7 +159,7 @@ where
 /// - `window_bits != 0`
 /// - The order of `P` is at least `2^{window_bits}` (in particular, `P` is not the point at infinity)
 /// - The curve has no points of order 2.
-pub fn scalar_multiply<F: PrimeField, FC, C>(
+pub fn scalar_multiply<F: BigPrimeField, FC, C>(
     chip: &FC,
     ctx: &mut Context<F>,
     P: EcPoint<F, FC::FieldPoint>,
@@ -257,7 +262,7 @@ where
         );
     }
     // if at the end, return identity point (0,0) if still not started
-    let zero = chip.load_constant(ctx, FC::FieldType::zero());
+    let zero = chip.load_constant(ctx, FC::FieldType::ZERO);
     ec_select(
         chip,
         ctx,
@@ -271,7 +276,7 @@ where
 // i.e. a.x^2 + y^2 = 1 + d.x^2.y^2
 pub fn check_is_on_curve<F, FC, C>(chip: &FC, ctx: &mut Context<F>, P: &EcPoint<F, FC::FieldPoint>)
 where
-    F: PrimeField,
+    F: BigPrimeField,
     FC: FieldChip<F>,
     C: CurveAffine<Base = FC::FieldType>,
 {
@@ -283,8 +288,8 @@ where
     let d = chip.load_constant(ctx, C::b());
 
     let mut d_x2_y2 = chip.mul(ctx, &x2, &y2);
-    d_x2_y2 = chip.mul(ctx, &d, &d_x2_y2).into();
-    let rhs = chip.add_constant_no_carry(ctx, d_x2_y2, FC::FieldType::one());
+    d_x2_y2 = chip.mul(ctx, &d, &d_x2_y2);
+    let rhs = chip.add_constant_no_carry(ctx, d_x2_y2, FC::FieldType::ONE);
 
     let diff = chip.sub_no_carry(ctx, lhs, rhs);
     chip.check_carry_mod_to_zero(ctx, diff)
@@ -292,7 +297,7 @@ where
 
 pub fn load_random_point<F, FC, C>(chip: &FC, ctx: &mut Context<F>) -> EcPoint<F, FC::FieldPoint>
 where
-    F: PrimeField,
+    F: BigPrimeField,
     FC: FieldChip<F>,
     C: CurveAffineExt<Base = FC::FieldType>,
 {
@@ -315,12 +320,12 @@ pub type BaseFieldEccChip<'chip, C> = EccChip<
 >;
 
 #[derive(Clone, Debug)]
-pub struct EccChip<'chip, F: PrimeField, FC: FieldChip<F>> {
+pub struct EccChip<'chip, F: BigPrimeField, FC: FieldChip<F>> {
     pub field_chip: &'chip FC,
     _marker: PhantomData<F>,
 }
 
-impl<'chip, F: PrimeField, FC: FieldChip<F>> EccChip<'chip, F, FC> {
+impl<'chip, F: BigPrimeField, FC: FieldChip<F>> EccChip<'chip, F, FC> {
     pub fn new(field_chip: &'chip FC) -> Self {
         Self {
             field_chip,
@@ -374,7 +379,7 @@ impl<'chip, F: PrimeField, FC: FieldChip<F>> EccChip<'chip, F, FC> {
     where
         C: CurveAffineExt<Base = FC::FieldType>,
     {
-        ec_add::<F, FC, C>(self.field_chip, ctx, &P, &Q)
+        ec_add::<F, FC, C>(self.field_chip, ctx, P, Q)
     }
 
     pub fn double<C>(
@@ -385,7 +390,7 @@ impl<'chip, F: PrimeField, FC: FieldChip<F>> EccChip<'chip, F, FC> {
     where
         C: CurveAffineExt<Base = FC::FieldType>,
     {
-        ec_double::<F, FC, C>(self.field_chip, ctx, &P)
+        ec_double::<F, FC, C>(self.field_chip, ctx, P)
     }
 
     pub fn is_equal(
@@ -404,9 +409,9 @@ impl<'chip, F: PrimeField, FC: FieldChip<F>> EccChip<'chip, F, FC> {
     }
 }
 
-impl<'chip, F: PrimeField, FC: PrimeFieldChip<F>> EccChip<'chip, F, FC>
+impl<'chip, F: BigPrimeField, FC: PrimeFieldChip<F>> EccChip<'chip, F, FC>
 where
-    FC::FieldType: PrimeField,
+    FC::FieldType: BigPrimeField,
 {
     // TODO: put a check in place that scalar is < modulus of C::Scalar
     pub fn fixed_base_scalar_mult<C>(

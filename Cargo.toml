@@ -4,8 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-group = "0.12"
-itertools = "0.10"
+itertools = "0.11"
 num-bigint = "0.4.3"
 rand = "0.8"
 rand_chacha = "0.3.1"
@@ -24,8 +23,8 @@ rand_core = { version = "0.6", default-features = false, features = ["getrandom"
 sha2 = "0.9"
 ssh-key = { version = "0.5.1", features = ["ed25519"] }
 
-halo2-base = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "community-edition" }
-halo2-ecc = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "community-edition" }
+halo2-base = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "feat/ed25519" }
+halo2-ecc = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "feat/ed25519" }
 rocket_cors = "0.5.2"
 
 [dev-dependencies]
@@ -37,12 +36,13 @@ path = "src/ed25519/bin/server.rs"
 required-features = ["server"]
 
 [features]
-default = ["dev-graph", "server"]
-dev-graph = ["halo2-base/dev-graph", "plotters"]
+default = ["halo2-axiom"]
 server = ["dep:rocket", "dep:rocket_contrib"]
+halo2-axiom = ["halo2-base/halo2-axiom", "halo2-ecc/halo2-axiom"]
+halo2-pse = ["halo2-base/halo2-pse", "halo2-ecc/halo2-pse"]
 
-[patch.'https://github.com/axiom-crypto/halo2.git']
-halo2_proofs_axiom = { git = "https://github.com/shuklaayush/halo2.git", branch = "feat/ed25519", package = "halo2_proofs" }
+[patch.crates-io]
+halo2curves_axiom = { git = "https://github.com/axiom-crypto/halo2curves.git", branch = "feat/ed25519", package = "halo2curves-axiom" }
 
 [profile.dev]
 opt-level = 3

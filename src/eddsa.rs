@@ -1,11 +1,11 @@
 use halo2_base::{
-    utils::{biguint_to_fe, CurveAffineExt},
+    utils::{biguint_to_fe, BigPrimeField, CurveAffineExt},
     AssignedValue, Context,
 };
 use halo2_ecc::bigint::ProperCrtUint;
 use halo2_ecc::{
     ecc::EcPoint,
-    fields::{fp::FpChip, FieldChip, PrimeField},
+    fields::{fp::FpChip, FieldChip},
 };
 use num_bigint::BigUint;
 
@@ -19,7 +19,7 @@ use super::fixed_base;
 // Assumes `s` is proper CRT integer
 /// TODO: Check `pubkey` should not be the identity point
 #[allow(non_snake_case)]
-pub fn eddsa_verify<F: PrimeField, CF: PrimeField, SF: PrimeField, GA>(
+pub fn eddsa_verify<F: BigPrimeField, CF: BigPrimeField, SF: BigPrimeField, GA>(
     chip: &EccChip<F, FpChip<F, CF>>,
     ctx: &mut Context<F>,
     pubkey: EcPoint<F, <FpChip<F, CF> as FieldChip<F>>::FieldPoint>, // A

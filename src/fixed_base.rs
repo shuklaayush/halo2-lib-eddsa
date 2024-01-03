@@ -1,9 +1,13 @@
 #![allow(non_snake_case)]
-use group::Curve;
-use halo2_base::{gates::GateInstructions, utils::CurveAffineExt, AssignedValue, Context};
+use halo2_base::{
+    gates::GateInstructions,
+    halo2_proofs::halo2curves::{ff::Field, group::Curve},
+    utils::{BigPrimeField, CurveAffineExt},
+    AssignedValue, Context,
+};
 use halo2_ecc::{
     ecc::{ec_select, ec_select_from_bits, EcPoint},
-    fields::{FieldChip, PrimeField, Selectable},
+    fields::{FieldChip, Selectable},
 };
 use itertools::Itertools;
 use std::cmp::min;
@@ -28,12 +32,12 @@ pub fn scalar_multiply<F, FC, C>(
     window_bits: usize,
 ) -> EcPoint<F, FC::FieldPoint>
 where
-    F: PrimeField,
+    F: BigPrimeField,
     C: CurveAffineExt,
     FC: FieldChip<F, FieldType = C::Base> + Selectable<F, FC::FieldPoint>,
 {
     if point.is_identity().into() {
-        let zero = chip.load_constant(ctx, C::Base::zero());
+        let zero = chip.load_constant(ctx, C::Base::ZERO);
         return EcPoint::new(zero.clone(), zero);
     }
     assert!(!scalar.is_empty());

@@ -1,19 +1,18 @@
 #![allow(non_snake_case)]
 use halo2_base::{
-    gates::{
-        builder::{GateThreadBuilder, RangeCircuitBuilder},
-        RangeChip,
-    },
+    gates::circuit::{builder::BaseCircuitBuilder, CircuitBuilderStage},
     halo2_proofs::{
         dev::MockProver,
-        halo2curves::ed25519::{Ed25519Affine, Fq as Fp, Fr as Fq},
+        halo2curves::{
+            bn256,
+            ed25519::{Ed25519Affine, Fq as Fp, Fr as Fq},
+        },
     },
     utils::{bigint_to_fe, fe_to_bigint, BigPrimeField},
-    Context,
 };
 use halo2_ecc::{
     bigint::ProperCrtUint,
-    fields::{fp::FpChip, FieldChip, PrimeField},
+    fields::{fp::FpChip, FieldChip},
 };
 use num_bigint::BigInt;
 use num_traits::Zero;
@@ -35,17 +34,17 @@ where
         })
 }
 
-#[cfg(test)]
-fn basic_tests<F: PrimeField>(
-    ctx: &mut Context<F>,
+fn basic_tests<F: BigPrimeField>(
+    builder: &mut BaseCircuitBuilder<F>,
     lookup_bits: usize,
     limb_bits: usize,
     num_limbs: usize,
     P: Ed25519Affine,
     Q: Ed25519Affine,
 ) {
-    std::env::set_var("LOOKUP_BITS", lookup_bits.to_string());
-    let range = RangeChip::<F>::default(lookup_bits);
+    builder.set_lookup_bits(lookup_bits);
+    let range = builder.range_chip();
+    let ctx = builder.main(0);
     let fp_chip = FpChip::<F, Fp>::new(&range, limb_bits, num_limbs);
     let chip = EccChip::new(&fp_chip);
 
@@ -85,37 +84,13 @@ fn test_ecc() {
     let P = Ed25519Affine::random(OsRng);
     let Q = Ed25519Affine::random(OsRng);
 
-    let mut builder = GateThreadBuilder::<Fq>::mock();
-    basic_tests(builder.main(0), k - 1, 88, 3, P, Q);
+    let mut builder =
+        BaseCircuitBuilder::<bn256::Fr>::from_stage(CircuitBuilderStage::Mock).use_k(k);
+    basic_tests(&mut builder, k - 1, 88, 3, P, Q);
 
-    builder.config(k, Some(20));
-    let circuit = RangeCircuitBuilder::mock(builder);
+    builder.calculate_params(Some(20));
 
-    MockProver::run(k as u32, &circuit, vec![])
+    MockProver::run(k as u32, &builder, vec![])
         .unwrap()
         .assert_satisfied();
-}
-
-#[cfg(feature = "dev-graph")]
-#[test]
-fn plot_ecc() {
-    let k = 23;
-    use plotters::prelude::*;
-
-    let root = BitMapBackend::new("layout.png", (512, 16384)).into_drawing_area();
-    root.fill(&WHITE).unwrap();
-    let root = root.titled("Ecc Layout", ("sans-serif", 60)).unwrap();
-
-    let P = Ed25519Affine::random(OsRng);
-    let Q = Ed25519Affine::random(OsRng);
-
-    let mut builder = GateThreadBuilder::<Fq>::keygen();
-    basic_tests(builder.main(0), k - 1, 88, 3, P, Q);
-
-    builder.config(k, Some(20));
-    let circuit = RangeCircuitBuilder::mock(builder);
-
-    halo2_base::halo2_proofs::dev::CircuitLayout::default()
-        .render(k as u32, &circuit, &root)
-        .unwrap();
 }
