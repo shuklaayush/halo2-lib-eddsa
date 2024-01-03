@@ -6,26 +6,18 @@ extern crate rocket;
 use ark_std::{end_timer, start_timer};
 use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
-use halo2_base::gates::builder::{CircuitBuilderStage, MultiPhaseThreadBreakPoints};
-use halo2_base::halo2_proofs::plonk::{
-    create_proof, keygen_pk, keygen_vk, verify_proof, ProvingKey,
-};
+use halo2_base::gates::circuit::builder::RangeCircuitBuilder;
+use halo2_base::gates::circuit::{BaseCircuitParams, CircuitBuilderStage};
+use halo2_base::gates::flex_gate::MultiPhaseThreadBreakPoints;
+use halo2_base::gates::RangeChip;
+use halo2_base::halo2_proofs::plonk::{keygen_pk, keygen_vk, ProvingKey};
+use halo2_base::halo2_proofs::poly::kzg::commitment::ParamsKZG;
 use halo2_base::halo2_proofs::{
     halo2curves::bn256::{Bn256, G1Affine},
-    poly::commitment::ParamsProver,
-    transcript::{Blake2bRead, Blake2bWrite, Challenge255},
     SerdeFormat,
 };
-use halo2_base::halo2_proofs::{
-    poly::kzg::{
-        commitment::{KZGCommitmentScheme, ParamsKZG},
-        multiopen::{ProverSHPLONK, VerifierSHPLONK},
-        strategy::SingleStrategy,
-    },
-    transcript::{TranscriptReadBuffer, TranscriptWriterBuffer},
-};
 use halo2_base::utils::fs::gen_srs;
-use rand_core::OsRng;
+use halo2_base::utils::testing::{check_proof, gen_proof};
 use serde::{Deserialize, Serialize};
 use ssh_key::SshSig;
 use std::fs::File;
@@ -35,10 +27,11 @@ use rocket::http::Method;
 use rocket_contrib::json::Json;
 use rocket_cors::{AllowedHeaders, AllowedOrigins, Cors, CorsOptions};
 
-use halo2_lib_eddsa::ed25519::utils::{eddsa_circuit, CircuitParams};
+use halo2_lib_eddsa::ed25519::utils::{eddsa_circuit, CircuitParams, EdDSAInput};
 
 struct ServerState {
     circuit_params: CircuitParams,
+    config_params: BaseCircuitParams,
     break_points: MultiPhaseThreadBreakPoints,
     srs_params: ParamsKZG<Bn256>,
     pk: ProvingKey<G1Affine>,
@@ -61,6 +54,7 @@ fn serve_generate_proof(
     task: Json<GenerateProofTask>,
 ) -> Result<Json<String>, String> {
     let circuit_params = state.circuit_params;
+    let config_params = state.config_params.clone();
     let break_points = &state.break_points;
     let srs_params = &state.srs_params;
     let pk = &state.pk;
@@ -77,40 +71,14 @@ fn serve_generate_proof(
     let A_bytes: &[u8; 32] = sshsig.public_key().ed25519().unwrap().as_ref();
     let sig: &[u8; 64] = sshsig.signature().as_bytes().try_into().unwrap();
 
-    // let circuit = eddsa_circuit(circuit_params, CircuitBuilderStage::Mock, None, &sig, &A_bytes, msg);
-    // MockProver::run(circuit_params.degree, &circuit, vec![])
-    //     .unwrap()
-    //     .assert_satisfied();
+    let input = EdDSAInput::from_bytes(sig, A_bytes, msg);
 
-    // create a proof
+    // create real proof
     let proof_time = start_timer!(|| "Proving time");
-    let circuit = eddsa_circuit(
-        circuit_params,
-        CircuitBuilderStage::Prover,
-        Some(break_points.clone()),
-        &sig,
-        &A_bytes,
-        msg,
-    );
-    let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
-    let mut rng = OsRng;
-    create_proof::<
-        KZGCommitmentScheme<Bn256>,
-        ProverSHPLONK<'_, Bn256>,
-        Challenge255<G1Affine>,
-        _,
-        Blake2bWrite<Vec<u8>, G1Affine, Challenge255<G1Affine>>,
-        _,
-    >(
-        &srs_params,
-        &pk,
-        &[circuit],
-        &[&[]],
-        &mut rng,
-        &mut transcript,
-    )
-    .unwrap();
-    let proof = transcript.finalize();
+    let mut builder = RangeCircuitBuilder::prover(config_params.clone(), break_points.clone());
+    let range = RangeChip::new(circuit_params.lookup_bits, builder.lookup_manager().clone());
+    eddsa_circuit(builder.pool(0).main(), &range, circuit_params, input);
+    let proof = gen_proof(&srs_params, &pk, builder);
     end_timer!(proof_time);
 
     println!("\nBenchmarks:");
@@ -135,24 +103,7 @@ fn serve_verify_proof(
     let proof = general_purpose::STANDARD.decode(&task.proof).unwrap();
 
     let verify_time = start_timer!(|| "Verify time");
-    let verifier_params = srs_params.verifier_params();
-    let strategy = SingleStrategy::new(&srs_params);
-    let mut transcript = Blake2bRead::<_, _, Challenge255<_>>::init(&proof[..]);
-
-    verify_proof::<
-        KZGCommitmentScheme<Bn256>,
-        VerifierSHPLONK<'_, Bn256>,
-        Challenge255<G1Affine>,
-        Blake2bRead<&[u8], G1Affine, Challenge255<G1Affine>>,
-        SingleStrategy<'_, Bn256>,
-    >(
-        verifier_params,
-        pk.get_vk(),
-        strategy,
-        &[&[]],
-        &mut transcript,
-    )
-    .unwrap();
+    check_proof(&srs_params, pk.get_vk(), &proof, true);
     end_timer!(verify_time);
 
     println!("\nBenchmarks:");
@@ -198,28 +149,27 @@ fn init_server_state(config_path: &PathBuf) -> ServerState {
     )
     .unwrap();
 
-    let k = circuit_params.degree;
-    let srs_params = gen_srs(k);
+    let input = EdDSAInput::from_bytes(&[0u8; 64], &[0u8; 32], &[0u8]);
 
-    let circuit = eddsa_circuit(
-        circuit_params,
-        CircuitBuilderStage::Keygen,
-        None,
-        &[0u8; 64],
-        &[0u8; 32],
-        &[0u8],
-    );
+    let mut builder = RangeCircuitBuilder::from_stage(CircuitBuilderStage::Keygen)
+        .use_k(circuit_params.degree as usize);
+    builder.set_lookup_bits(circuit_params.lookup_bits);
+    let range = RangeChip::new(circuit_params.lookup_bits, builder.lookup_manager().clone());
+    eddsa_circuit(builder.pool(0).main(), &range, circuit_params, input);
 
+    // configure the circuit shape, 9 blinding rows seems enough
+    let config_params = builder.calculate_params(None);
+
+    let srs_params = gen_srs(circuit_params.degree);
     let vk_time = start_timer!(|| "Generating vkey");
-    let vk = keygen_vk(&srs_params, &circuit).unwrap();
+    let vk = keygen_vk(&srs_params, &builder).unwrap();
     end_timer!(vk_time);
-
     let pk_time = start_timer!(|| "Generating pkey");
-    let pk = keygen_pk(&srs_params, vk, &circuit).unwrap();
+    let pk = keygen_pk(&srs_params, vk, &builder).unwrap();
     end_timer!(pk_time);
 
-    let break_points = circuit.0.break_points.take();
-    drop(circuit);
+    let break_points = builder.break_points();
+    drop(builder);
 
     println!("\nCircuit Parameters:");
     println!("  Degree                   : {}", circuit_params.degree);
@@ -250,6 +200,7 @@ fn init_server_state(config_path: &PathBuf) -> ServerState {
 
     ServerState {
         circuit_params,
+        config_params,
         break_points,
         srs_params,
         pk,
