@@ -36,8 +36,7 @@ path = "src/ed25519/bin/server.rs"
 required-features = ["server"]
 
 [features]
-default = ["halo2-axiom"] # ["dev-graph"]
-dev-graph = ["halo2-pse", "halo2-base/dev-graph", "plotters"]
+default = ["halo2-axiom"]
 server = ["dep:rocket", "dep:rocket_contrib"]
 halo2-axiom = ["halo2-base/halo2-axiom", "halo2-ecc/halo2-axiom"]
 halo2-pse = ["halo2-base/halo2-pse", "halo2-ecc/halo2-pse"]
