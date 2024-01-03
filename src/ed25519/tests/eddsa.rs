@@ -1,77 +1,20 @@
 #![allow(non_snake_case)]
-use halo2_base::gates::RangeChip;
 use halo2_base::halo2_proofs::arithmetic::Field;
+use halo2_base::halo2_proofs::halo2curves::ff::FromUniformBytes;
 use halo2_base::halo2_proofs::{
     halo2curves::bn256::Fr,
-    halo2curves::ed25519::{Ed25519Affine, Fq as Fp, Fr as Fq},
+    halo2curves::ed25519::{Ed25519Affine, Fr as Fq},
 };
 use halo2_base::utils::testing::base_test;
-use halo2_base::utils::BigPrimeField;
-use halo2_base::{halo2_proofs::halo2curves::ff::FromUniformBytes, Context};
-use halo2_ecc::ecc::EcPoint;
-use halo2_ecc::fields::{FieldChip, FpStrategy};
 use rand::RngCore;
 use rand_core::OsRng;
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Write;
 use std::{fs, io::BufRead};
 
-use crate::ecc::EccChip;
-use crate::ed25519::{FpChip, FqChip};
-use crate::eddsa::eddsa_verify;
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct CircuitParams {
-    pub strategy: FpStrategy,
-    pub degree: u32,
-    pub num_advice: usize,
-    pub num_lookup_advice: usize,
-    pub num_fixed: usize,
-    pub lookup_bits: usize,
-    pub limb_bits: usize,
-    pub num_limbs: usize,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct EdDSAInput {
-    pub R: Ed25519Affine,
-    pub s: Fq,
-    pub msghash: Fq,
-    pub pubkey: Ed25519Affine,
-}
-
-impl EdDSAInput {
-    pub fn from_bytes(sig: &[u8; 64], A_bytes: &[u8; 32], msg: &[u8]) -> Self {
-        let R_bytes: [u8; 32] = sig[..32].try_into().unwrap();
-        let s_bytes: [u8; 32] = sig[32..].try_into().unwrap();
-
-        let msghash = hash_to_fe(
-            Sha512::default()
-                .chain(&R_bytes[..])
-                .chain(&A_bytes[..])
-                .chain(msg),
-        );
-
-        let R = Ed25519Affine::from_bytes(R_bytes).unwrap();
-        let s = Fq::from_bytes(&s_bytes).unwrap();
-        let A = Ed25519Affine::from_bytes(*A_bytes).unwrap();
-
-        EdDSAInput {
-            R,
-            s,
-            msghash,
-            pubkey: A,
-        }
-    }
-}
-
-fn hash_to_fe(hash: Sha512) -> Fq {
-    let output: [u8; 64] = hash.finalize().as_slice().try_into().unwrap();
-    Fq::from_uniform_bytes(&output)
-}
+use crate::ed25519::utils::{eddsa_circuit, hash_to_fe, CircuitParams, EdDSAInput};
 
 fn seed_to_key(seed: [u8; 32]) -> (Fq, [u8; 32], [u8; 32]) {
     // Expand the seed to a 64-byte array with SHA512.
@@ -139,26 +82,6 @@ fn random_eddsa_input() -> EdDSAInput {
     EdDSAInput::from_bytes(&sig, &A_bytes, msg)
 }
 
-pub fn eddsa_test<F: BigPrimeField>(
-    ctx: &mut Context<F>,
-    range: &RangeChip<F>,
-    params: CircuitParams,
-    input: EdDSAInput,
-) -> F {
-    let fp_chip = FpChip::<F>::new(range, params.limb_bits, params.num_limbs);
-    let fq_chip = FqChip::<F>::new(range, params.limb_bits, params.num_limbs);
-
-    let [m, s] = [input.msghash, input.s].map(|x| fq_chip.load_private(ctx, x));
-    let [Rx, Ry] = [input.R.x, input.R.y].map(|x| fp_chip.load_private(ctx, x));
-    let R = EcPoint::new(Rx, Ry);
-
-    let ecc_chip = EccChip::<F, FpChip<F>>::new(&fp_chip);
-    let pubkey = ecc_chip.load_private_unchecked(ctx, (input.pubkey.x, input.pubkey.y));
-    // test EdDSA
-    let res = eddsa_verify::<F, Fp, Fq, Ed25519Affine>(&ecc_chip, ctx, pubkey, R, s, m, 4, 4);
-    *res.value()
-}
-
 pub fn run_test(input: EdDSAInput) {
     let path = "configs/ed25519/eddsa_circuit.config";
     let params: CircuitParams = serde_json::from_reader(
@@ -169,7 +92,7 @@ pub fn run_test(input: EdDSAInput) {
     let res = base_test()
         .k(params.degree)
         .lookup_bits(params.lookup_bits)
-        .run(|ctx, range| eddsa_test(ctx, range, params, input));
+        .run(|ctx, range| eddsa_circuit(ctx, range, params, input));
     assert_eq!(res, Fr::ONE);
 }
 
@@ -225,7 +148,7 @@ fn bench_ssh_ed25519() {
         .lookup_bits(params.lookup_bits)
         .unusable_rows(20)
         .bench_builder(input, input, |pool, range, input| {
-            eddsa_test(pool.main(), range, params, input);
+            eddsa_circuit(pool.main(), range, params, input);
         });
 }
 
@@ -254,7 +177,7 @@ fn bench_ed25519_eddsa() -> Result<(), Box<dyn std::error::Error>> {
                 random_eddsa_input(),
                 random_eddsa_input(),
                 |pool, range, input| {
-                    eddsa_test(pool.main(), range, bench_params, input);
+                    eddsa_circuit(pool.main(), range, bench_params, input);
                 },
             );
 
