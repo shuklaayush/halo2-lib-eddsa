@@ -5,7 +5,5 @@ pub type FpChip<'range, F> = fp::FpChip<'range, F, Fq>;
 pub type FqChip<'range, F> = fp::FpChip<'range, F, Fr>;
 pub type Ed25519Chip<'chip, F> = ecc::EccChip<'chip, F, FpChip<'chip, F>>;
 
-pub mod utils;
-
 #[cfg(test)]
 mod tests;
