@@ -2,6 +2,7 @@
 
 https://shuklaayu.sh/blog/axiom-ed25519
 
+Frontend for github ed25519 commit signature verification: https://github.com/shuklaayush/halo2-lib-eddsa-app
 
 Currently to use this crate in your repo you will have to add the following to `.cargo/config.toml`:
 ```toml

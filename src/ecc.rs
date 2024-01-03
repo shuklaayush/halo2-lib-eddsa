@@ -4,11 +4,12 @@ use halo2_base::{
     halo2_proofs::{
         arithmetic::CurveAffine,
         halo2curves::{
+            ed25519::TwistedEdwardsCurveAffineExt,
             ff::Field,
             group::{Curve, Group},
         },
     },
-    utils::{modulus, BigPrimeField, CurveAffineExt},
+    utils::{modulus, BigPrimeField},
     AssignedValue, Context,
 };
 use halo2_ecc::{
@@ -40,10 +41,9 @@ pub fn ec_add<F, FC, C>(
 where
     F: BigPrimeField,
     FC: FieldChip<F>,
-    C: CurveAffine<Base = FC::FieldType>,
+    C: TwistedEdwardsCurveAffineExt<Base = FC::FieldType>,
 {
-    // TODO: Hacky, is there a better way to do this?
-    let d = chip.load_constant(ctx, C::b());
+    let d = chip.load_constant(ctx, C::d());
 
     // x3 = (x1 * y2 + y1 * x2) / (1 + d * x1 * x2 * y1 * y2)
     let x1_y2 = chip.mul(ctx, &P.x, &Q.y);
@@ -85,10 +85,9 @@ pub fn ec_sub<F, FC, C>(
 where
     F: BigPrimeField,
     FC: FieldChip<F>,
-    C: CurveAffine<Base = FC::FieldType>,
+    C: TwistedEdwardsCurveAffineExt<Base = FC::FieldType>,
 {
-    // TODO: Hacky, is there a better way to do this?
-    let d = chip.load_constant(ctx, C::b());
+    let d = chip.load_constant(ctx, C::d());
 
     // x3 = (x1 * y2 + y1 * x2) / (1 + d * x1 * x2 * y1 * y2)
     let x1_y2 = chip.mul(ctx, &P.x, &Q.y);
@@ -122,10 +121,9 @@ pub fn ec_double<F, FC, C>(
 where
     F: BigPrimeField,
     FC: FieldChip<F>,
-    C: CurveAffine<Base = FC::FieldType>,
+    C: TwistedEdwardsCurveAffineExt<Base = FC::FieldType>,
 {
-    // TODO: Hacky, is there a better way to do this?
-    let d = chip.load_constant(ctx, C::b());
+    let d = chip.load_constant(ctx, C::d());
 
     // x2 = (2 * x1 * y1) / (1 + d * x1^2 * y1^2)
     let x1_y1 = chip.mul(ctx, &P.x, &P.y);
@@ -169,7 +167,7 @@ pub fn scalar_multiply<F: BigPrimeField, FC, C>(
 ) -> EcPoint<F, FC::FieldPoint>
 where
     FC: FieldChip<F> + Selectable<F, FC::FieldPoint>,
-    C: CurveAffineExt<Base = FC::FieldType>,
+    C: TwistedEdwardsCurveAffineExt<Base = FC::FieldType>,
 {
     assert!(!scalar.is_empty());
     assert!((max_bits as u64) <= modulus::<F>().bits());
@@ -278,14 +276,13 @@ pub fn check_is_on_curve<F, FC, C>(chip: &FC, ctx: &mut Context<F>, P: &EcPoint<
 where
     F: BigPrimeField,
     FC: FieldChip<F>,
-    C: CurveAffine<Base = FC::FieldType>,
+    C: TwistedEdwardsCurveAffineExt<Base = FC::FieldType>,
 {
     let x2 = chip.mul(ctx, &P.x, &P.x);
     let y2 = chip.mul(ctx, &P.y, &P.y);
     let lhs = chip.sub_no_carry(ctx, &y2, &x2);
 
-    // TODO: Hacky, is there a better way to do this?
-    let d = chip.load_constant(ctx, C::b());
+    let d = chip.load_constant(ctx, C::d());
 
     let mut d_x2_y2 = chip.mul(ctx, &x2, &y2);
     d_x2_y2 = chip.mul(ctx, &d, &d_x2_y2);
@@ -299,7 +296,7 @@ pub fn load_random_point<F, FC, C>(chip: &FC, ctx: &mut Context<F>) -> EcPoint<F
 where
     F: BigPrimeField,
     FC: FieldChip<F>,
-    C: CurveAffineExt<Base = FC::FieldType>,
+    C: TwistedEdwardsCurveAffineExt<Base = FC::FieldType>,
 {
     let base_point: C = C::CurveExt::random(ChaCha20Rng::from_entropy()).to_affine();
     let (x, y) = base_point.into_coordinates();
@@ -344,7 +341,7 @@ impl<'chip, F: BigPrimeField, FC: FieldChip<F>> EccChip<'chip, F, FC> {
         (x, y): (FC::FieldType, FC::FieldType),
     ) -> EcPoint<F, FC::FieldPoint>
     where
-        C: CurveAffineExt<Base = FC::FieldType>,
+        C: TwistedEdwardsCurveAffineExt<Base = FC::FieldType>,
     {
         let pt = self.load_private_unchecked(ctx, (x, y));
         self.assert_is_on_curve::<C>(ctx, &pt);
@@ -365,7 +362,7 @@ impl<'chip, F: BigPrimeField, FC: FieldChip<F>> EccChip<'chip, F, FC> {
 
     pub fn assert_is_on_curve<C>(&self, ctx: &mut Context<F>, P: &EcPoint<F, FC::FieldPoint>)
     where
-        C: CurveAffine<Base = FC::FieldType>,
+        C: TwistedEdwardsCurveAffineExt<Base = FC::FieldType>,
     {
         check_is_on_curve::<F, FC, C>(self.field_chip, ctx, P)
     }
@@ -377,7 +374,7 @@ impl<'chip, F: BigPrimeField, FC: FieldChip<F>> EccChip<'chip, F, FC> {
         Q: &EcPoint<F, FC::FieldPoint>,
     ) -> EcPoint<F, FC::FieldPoint>
     where
-        C: CurveAffineExt<Base = FC::FieldType>,
+        C: TwistedEdwardsCurveAffineExt<Base = FC::FieldType>,
     {
         ec_add::<F, FC, C>(self.field_chip, ctx, P, Q)
     }
@@ -388,7 +385,7 @@ impl<'chip, F: BigPrimeField, FC: FieldChip<F>> EccChip<'chip, F, FC> {
         P: &EcPoint<F, FC::FieldPoint>,
     ) -> EcPoint<F, FC::FieldPoint>
     where
-        C: CurveAffineExt<Base = FC::FieldType>,
+        C: TwistedEdwardsCurveAffineExt<Base = FC::FieldType>,
     {
         ec_double::<F, FC, C>(self.field_chip, ctx, P)
     }
@@ -423,7 +420,7 @@ where
         window_bits: usize,
     ) -> EcPoint<F, FC::FieldPoint>
     where
-        C: CurveAffineExt,
+        C: TwistedEdwardsCurveAffineExt,
         FC: FieldChip<F, FieldType = C::Base> + Selectable<F, FC::FieldPoint>,
     {
         fixed_base::scalar_multiply::<F, _, _>(

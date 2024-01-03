@@ -1,8 +1,8 @@
 #![allow(non_snake_case)]
 use halo2_base::{
     gates::GateInstructions,
-    halo2_proofs::halo2curves::{ff::Field, group::Curve},
-    utils::{BigPrimeField, CurveAffineExt},
+    halo2_proofs::halo2curves::{ed25519::TwistedEdwardsCurveAffineExt, ff::Field, group::Curve},
+    utils::BigPrimeField,
     AssignedValue, Context,
 };
 use halo2_ecc::{
@@ -33,7 +33,7 @@ pub fn scalar_multiply<F, FC, C>(
 ) -> EcPoint<F, FC::FieldPoint>
 where
     F: BigPrimeField,
-    C: CurveAffineExt,
+    C: TwistedEdwardsCurveAffineExt,
     FC: FieldChip<F, FieldType = C::Base> + Selectable<F, FC::FieldPoint>,
 {
     if point.is_identity().into() {

@@ -1,5 +1,6 @@
 use halo2_base::{
-    utils::{biguint_to_fe, BigPrimeField, CurveAffineExt},
+    halo2_proofs::halo2curves::ed25519::TwistedEdwardsCurveAffineExt,
+    utils::{biguint_to_fe, BigPrimeField},
     AssignedValue, Context,
 };
 use halo2_ecc::bigint::ProperCrtUint;
@@ -30,7 +31,7 @@ pub fn eddsa_verify<F: BigPrimeField, CF: BigPrimeField, SF: BigPrimeField, GA>(
     fixed_window_bits: usize,
 ) -> AssignedValue<F>
 where
-    GA: CurveAffineExt<Base = CF, ScalarExt = SF>,
+    GA: TwistedEdwardsCurveAffineExt<Base = CF, ScalarExt = SF>,
 {
     let base_chip = chip.field_chip;
     let scalar_chip =
