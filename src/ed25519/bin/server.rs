@@ -61,6 +61,8 @@ fn serve_generate_proof(
 
     let task = task.into_inner();
     let sshsig = task.ssh_sig.parse::<SshSig>().unwrap();
+    println!("ssh_sig: {:?}", sshsig);
+
     let msg: &[u8] = &SshSig::signed_data(
         sshsig.namespace(),
         sshsig.hash_alg(),
