@@ -43,6 +43,7 @@ halo2-pse = ["halo2-base/halo2-pse", "halo2-ecc/halo2-pse"]
 
 [patch.crates-io]
 halo2curves_axiom = { git = "https://github.com/axiom-crypto/halo2curves.git", branch = "feat/ed25519", package = "halo2curves-axiom" }
+# halo2curves_axiom = { path = "../halo2curves", package = "halo2curves-axiom" }
 
 [profile.dev]
 opt-level = 3
