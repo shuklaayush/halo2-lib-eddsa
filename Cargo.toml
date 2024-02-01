@@ -1,6 +1,6 @@
 [package]
 name = "halo2-lib-eddsa"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
@@ -18,13 +18,17 @@ clap = { version = "4.3.3", features = ["derive"] }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_json = "1.0"
 rocket = { version = "0.4", optional = true }
-rocket_contrib = { version = "0.4", optional = true, default-features = false, features = ["json"] }
-rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
+rocket_contrib = { version = "0.4", optional = true, default-features = false, features = [
+    "json",
+] }
+rand_core = { version = "0.6", default-features = false, features = [
+    "getrandom",
+] }
 sha2 = "0.9"
 ssh-key = { version = "0.5.1", features = ["ed25519"] }
 
-halo2-base = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "feat/ed25519" }
-halo2-ecc = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "feat/ed25519" }
+halo2-base = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "community-edition" }
+halo2-ecc = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "community-edition" }
 rocket_cors = "0.5.2"
 
 [dev-dependencies]
@@ -41,12 +45,8 @@ server = ["dep:rocket", "dep:rocket_contrib"]
 halo2-axiom = ["halo2-base/halo2-axiom", "halo2-ecc/halo2-axiom"]
 halo2-pse = ["halo2-base/halo2-pse", "halo2-ecc/halo2-pse"]
 
-[patch.crates-io]
-halo2curves_axiom = { git = "https://github.com/axiom-crypto/halo2curves.git", branch = "feat/ed25519", package = "halo2curves-axiom" }
-# halo2curves_axiom = { path = "../halo2curves", package = "halo2curves-axiom" }
-
 [profile.dev]
 opt-level = 3
-debug = 1 # change to 0 or 2 for more or less debug info
+debug = 1              # change to 0 or 2 for more or less debug info
 overflow-checks = true
 incremental = true
